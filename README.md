@@ -1,4 +1,4 @@
-# Домашнее задание к занятию "6.2. SQL"
+# Домашнее задание к занятию "6.3. MySQL"
 
 ## Введение
 
@@ -7,369 +7,185 @@
 
 ## Задача 1
 
-Используя docker поднимите инстанс PostgreSQL (версию 12) c 2 volume,
-в который будут складываться данные БД и бэкапы.
+Используя docker поднимите инстанс MySQL (версию 8). Данные БД сохраните в volume.
 
-Приведите получившуюся команду или docker-compose манифест.
+Изучите [бэкап БД](https://github.com/netology-code/virt-homeworks/tree/master/06-db-03-mysql/test_data) и
+восстановитесь из него.
+
+Перейдите в управляющую консоль `mysql` внутри контейнера.
+
+Используя команду `\h` получите список управляющих команд.
+
+Найдите команду для выдачи статуса БД и **приведите в ответе** из ее вывода версию сервера БД.
+
+Подключитесь к восстановленной БД и получите список таблиц из этой БД.
+
+**Приведите в ответе** количество записей с `price` > 300.
+
+В следующих заданиях мы будем продолжать работу с данным контейнером.
 
 #### Ответ
 
-```
-docker pull postgres:12.12-alpine3.16
-docker volume create vl_psql_data
-docker volume create vl_psql_backup
+Версия БД:
+`Server version:		8.0.30 MySQL Community Server - GPL`
 
-docker create \
---name home_psql \
--e POSTGRES_PASSWORD=postgres \
--p 5432:5432 \
--v vl_psql_data:/var/lib/postgresql/data \
--v vl_psql_backup:/var/lib/postgresql/backup \
-postgres:12.12-alpine3.16
-
-docker start home_psql
+Количество строк с `price` > 300:
 ```
+mysql> select count(*) from orders where price > 300;
++----------+
+| count(*) |
++----------+
+|        1 |
++----------+
+1 row in set (0.01 sec)
+```
+
 ## Задача 2
 
-В БД из задачи 1:
-- создайте пользователя test-admin-user и БД test_db
-- в БД test_db создайте таблицу orders и clients (спeцификация таблиц ниже)
-- предоставьте привилегии на все операции пользователю test-admin-user на таблицы БД test_db
-- создайте пользователя test-simple-user  
-- предоставьте пользователю test-simple-user права на SELECT/INSERT/UPDATE/DELETE данных таблиц БД test_db
+Создайте пользователя test в БД c паролем test-pass, используя:
+- плагин авторизации mysql_native_password
+- срок истечения пароля - 180 дней
+- количество попыток авторизации - 3
+- максимальное количество запросов в час - 100
+- аттрибуты пользователя:
+    - Фамилия "Pretty"
+    - Имя "James"
 
-Таблица orders:
-- id (serial primary key)
-- наименование (string)
-- цена (integer)
+Предоставьте привелегии пользователю `test` на операции SELECT базы `test_db`.
 
-Таблица clients:
-- id (serial primary key)
-- фамилия (string)
-- страна проживания (string, index)
-- заказ (foreign key orders)
-
-Приведите:
-- итоговый список БД после выполнения пунктов выше,
-- описание таблиц (describe)
-- SQL-запрос для выдачи списка пользователей с правами над таблицами test_db
-- список пользователей с правами над таблицами test_db
+Используя таблицу INFORMATION_SCHEMA.USER_ATTRIBUTES получите данные по пользователю `test` и
+**приведите в ответе к задаче**.
 
 #### Ответ
 
-Список баз:
 ```
-test_db=# \l
-                                 List of databases
-   Name    |  Owner   | Encoding |  Collate   |   Ctype    |   Access privileges   
------------+----------+----------+------------+------------+-----------------------
- postgres  | postgres | UTF8     | en_US.utf8 | en_US.utf8 |
- template0 | postgres | UTF8     | en_US.utf8 | en_US.utf8 | =c/postgres          +
-           |          |          |            |            | postgres=CTc/postgres
- template1 | postgres | UTF8     | en_US.utf8 | en_US.utf8 | =c/postgres          +
-           |          |          |            |            | postgres=CTc/postgres
- test_db   | postgres | UTF8     | en_US.utf8 | en_US.utf8 | =Tc/postgres         +
-           |          |          |            |            | postgres=CTc/postgres
-(4 rows)
-```
+mysql> CREATE USER 'test'@'localhost' IDENTIFIED BY 'test-pass';
 
-Список пользователей:
-```
-test_db=# \du
-                                       List of roles
-    Role name     |                         Attributes                         | Member of
-------------------+------------------------------------------------------------+-----------
- postgres         | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
- test-admin-user  | Superuser, Cannot login                                    | {}
- test-simple-user |                                                            | {}
-```
-Список таблиц базы test_db:
-```
-test_db=# \d+ clients
-                                   Table "public.clients"
-  Column  |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
-----------+---------+-----------+----------+---------+----------+--------------+-------------
- id       | integer |           |          |         | plain    |              |
- fullname | text    |           |          |         | extended |              |
- country  | text    |           |          |         | extended |              |
- purchase | integer |           |          |         | plain    |              |
-Foreign-key constraints:
-    "clients_purchase_fkey" FOREIGN KEY (purchase) REFERENCES orders(id)
-Access method: heap
+mysql> ALTER USER 'test'@'localhost' ATTRIBUTE
+    -> '{"firstname": "James", "lastname": "Pretty"}';
 
-test_db=# \d+ orders
-                                   Table "public.orders"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
---------+---------+-----------+----------+---------+----------+--------------+-------------
- id     | integer |           | not null |         | plain    |              |
- name   | text    |           |          |         | extended |              |
- price  | integer |           |          |         | plain    |              |
-Indexes:
-    "orders_pkey" PRIMARY KEY, btree (id)
-Referenced by:
-    TABLE "clients" CONSTRAINT "clients_purchase_fkey" FOREIGN KEY (purchase) REFERENCES orders(id)
-Access method: heap
-```
-Права пользователя test-admin-user:
-```
-test_db=# SELECT * FROM information_schema.table_privileges WHERE grantee in ('test-admin-user');
- grantor  |     grantee     | table_catalog | table_schema | table_name | privilege_type | is_grantable | with_hierarchy
-----------+-----------------+---------------+--------------+------------+----------------+--------------+----------------
- postgres | test-admin-user | test_db       | public       | orders     | INSERT         | YES          | NO
- postgres | test-admin-user | test_db       | public       | orders     | SELECT         | YES          | YES
- postgres | test-admin-user | test_db       | public       | orders     | UPDATE         | YES          | NO
- postgres | test-admin-user | test_db       | public       | orders     | DELETE         | YES          | NO
- postgres | test-admin-user | test_db       | public       | orders     | TRUNCATE       | YES          | NO
- postgres | test-admin-user | test_db       | public       | orders     | REFERENCES     | YES          | NO
- postgres | test-admin-user | test_db       | public       | orders     | TRIGGER        | YES          | NO
- postgres | test-admin-user | test_db       | public       | clients    | INSERT         | YES          | NO
- postgres | test-admin-user | test_db       | public       | clients    | SELECT         | YES          | YES
- postgres | test-admin-user | test_db       | public       | clients    | UPDATE         | YES          | NO
- postgres | test-admin-user | test_db       | public       | clients    | DELETE         | YES          | NO
- postgres | test-admin-user | test_db       | public       | clients    | TRUNCATE       | YES          | NO
- postgres | test-admin-user | test_db       | public       | clients    | REFERENCES     | YES          | NO
- postgres | test-admin-user | test_db       | public       | clients    | TRIGGER        | YES          | NO
-(14 rows)
-```
-Права пользователя test-simple-user:
-```
-test_db=# SELECT * FROM information_schema.table_privileges WHERE grantee in ('test-simple-user');
- grantor  |     grantee      | table_catalog | table_schema | table_name | privilege_type | is_grantable | with_hierarchy
-----------+------------------+---------------+--------------+------------+----------------+--------------+----------------
- postgres | test-simple-user | test_db       | public       | orders     | INSERT         | NO           | NO
- postgres | test-simple-user | test_db       | public       | orders     | SELECT         | NO           | YES
- postgres | test-simple-user | test_db       | public       | orders     | UPDATE         | NO           | NO
- postgres | test-simple-user | test_db       | public       | orders     | DELETE         | NO           | NO
- postgres | test-simple-user | test_db       | public       | clients    | INSERT         | NO           | NO
- postgres | test-simple-user | test_db       | public       | clients    | SELECT         | NO           | YES
- postgres | test-simple-user | test_db       | public       | clients    | UPDATE         | NO           | NO
- postgres | test-simple-user | test_db       | public       | clients    | DELETE         | NO           | NO
-(8 rows)
+mysql> ALTER USER 'test'@'localhost'
+    -> WITH
+    -> MAX_QUERIES_PER_HOUR 100
+    -> FAILED_LOGIN_ATTEMPTS 3
+    -> PASSWORD_LOCK_TIME 2
+    -> PASSWORD EXPIRE INTERVAL 180 DAY;
+
+mysql> GRANT SELECT ON test_db.* TO 'test'@'localhost';
+Query OK, 0 rows affected, 1 warning (0.00 sec)
+
+mysql> SELECT USER,HOST,ATTRIBUTE FROM INFORMATION_SCHEMA.USER_ATTRIBUTES WHERE USER='test';
++------+-----------+----------------------------------------------+
+| USER | HOST      | ATTRIBUTE                                    |
++------+-----------+----------------------------------------------+
+| test | localhost | {"lastname": "Pretty", "firstname": "James"} |
++------+-----------+----------------------------------------------+
+1 row in set (0.00 sec)
 ```
 
 ## Задача 3
 
-Используя SQL синтаксис - наполните таблицы следующими тестовыми данными:
+Установите профилирование `SET profiling = 1`.
+Изучите вывод профилирования команд `SHOW PROFILES;`.
 
-Таблица orders
+Исследуйте, какой `engine` используется в таблице БД `test_db` и **приведите в ответе**.
 
-|Наименование|цена|
-|------------|----|
-|Шоколад| 10 |
-|Принтер| 3000 |
-|Книга| 500 |
-|Монитор| 7000|
-|Гитара| 4000|
-
-Таблица clients
-
-|ФИО|Страна проживания|
-|------------|----|
-|Иванов Иван Иванович| USA |
-|Петров Петр Петрович| Canada |
-|Иоганн Себастьян Бах| Japan |
-|Ронни Джеймс Дио| Russia|
-|Ritchie Blackmore| Russia|
-
-Используя SQL синтаксис:
-- вычислите количество записей для каждой таблицы
-- приведите в ответе:
-    - запросы
-    - результаты их выполнения.
+Измените `engine` и **приведите время выполнения и запрос на изменения из профайлера в ответе**:
+- на `MyISAM`
+- на `InnoDB`
 
 #### Ответ
 
-Добавление данных в таблицы:
 ```
-test_db=# INSERT INTO clients (id,fullname,country) VALUES (1,'Иванов Иван Иванович','USA');
-test_db=# INSERT INTO clients (id,fullname,country) VALUES (2,'Петров Петр Петрович','Canada');
-test_db=# INSERT INTO clients (id,fullname,country) VALUES (3,'Иоганн Себастьян Бах','Japan');
-test_db=# INSERT INTO clients (id,fullname,country) VALUES (4,'Ронни Джеймс Дио','Russia');
-test_db=# INSERT INTO clients (id,fullname,country) VALUES (5,'Ritchie Blackmore','Russia');
+mysql> SET profiling = 1;
+Query OK, 0 rows affected, 1 warning (0.00 sec)
+```
+По-умолчанию у таблицы `orders` `ENGINE` = `InnoDB`
+```
+mysql> SELECT TABLE_SCHEMA,TABLE_NAME,ENGINE,VERSION FROM information_schema.TABLES where TABLE_NAME = 'orders';
++--------------+------------+--------+---------+
+| TABLE_SCHEMA | TABLE_NAME | ENGINE | VERSION |
++--------------+------------+--------+---------+
+| test_db      | orders     | InnoDB |      10 |
++--------------+------------+--------+---------+
+1 row in set (0.00 sec)
+```
+Сменив `ENGINE` таблицы, получаем следующие результаты:
+```
+mysql> ALTER TABLE orders ENGINE=MyISAM;
+Query OK, 5 rows affected (0.09 sec)
+Records: 5  Duplicates: 0  Warnings: 0
 
-test_db=# INSERT INTO orders (id,name,price) VALUES (1,'Шоколад',10);
-test_db=# INSERT INTO orders (id,name,price) VALUES (2,'Принтер',3000);
-test_db=# INSERT INTO orders (id,name,price) VALUES (3,'Книга',500);
-test_db=# INSERT INTO orders (id,name,price) VALUES (4,'Монитор',7000);
-test_db=# INSERT INTO orders (id,name,price) VALUES (5,'Гитара',4000);
-```
-Количество записей в каждой таблице:
-```
-test_db=# SELECT COUNT(*) FROM clients;
- count
--------
-     5
-(1 row)
+mysql> ALTER TABLE orders ENGINE=InnoDB;
+Query OK, 5 rows affected (0.03 sec)
+Records: 5  Duplicates: 0  Warnings: 0
 
-test_db=# SELECT COUNT(*) FROM orders;
- count
--------
-     5
-(1 row)
+mysql> SHOW PROFILES;
++----------+------------+--------------------------------------+
+| Query_ID | Duration   | Query                                |
++----------+------------+--------------------------------------+
+|       11 | 0.00017675 | SET @@profiling_history_size = 100   |
+|       12 | 0.00032350 | ALTER TABLE orders SET ENGINE=MyISAM |
+|       13 | 0.09105925 | ALTER TABLE orders ENGINE=MyISAM     |
+|       14 | 0.03776225 | ALTER TABLE orders ENGINE=InnoDB     |
++----------+------------+--------------------------------------+
+4 rows in set, 1 warning (0.00 sec)
 ```
+
 ## Задача 4
 
-Часть пользователей из таблицы clients решили оформить заказы из таблицы orders.
+Изучите файл `my.cnf` в директории /etc/mysql.
 
-Используя foreign keys свяжите записи из таблиц, согласно таблице:
+Измените его согласно ТЗ (движок InnoDB):
+- Скорость IO важнее сохранности данных
+- Нужна компрессия таблиц для экономии места на диске
+- Размер буффера с незакомиченными транзакциями 1 Мб
+- Буффер кеширования 30% от ОЗУ
+- Размер файла логов операций 100 Мб
 
-|ФИО|Заказ|
-|------------|----|
-|Иванов Иван Иванович| Книга |
-|Петров Петр Петрович| Монитор |
-|Иоганн Себастьян Бах| Гитара |
-
-Приведите SQL-запросы для выполнения данных операций.
-
-Приведите SQL-запрос для выдачи всех пользователей, которые совершили заказ, а также вывод данного запроса.
-
-Подсказк - используйте директиву `UPDATE`.
+Приведите в ответе измененный файл `my.cnf`.
 
 #### Ответ
 
-Обновление базы клиентов.
+Файл `my.cnf` после внесения изменений:
 ```
-test_db=# UPDATE clients SET purchase=3 WHERE fullname='Иванов Иван Иванович';
-UPDATE 1
-test_db=# UPDATE clients SET purchase=4 WHERE fullname='Петров Петр Петрович';
-UPDATE 1
-test_db=# UPDATE clients SET purchase=5 WHERE fullname='Иоганн Себастьян Бах';
-UPDATE 1
-```
-Выборка клиентов, которые делали заказ:
-```
-test_db=# SELECT id,fullname,purchase FROM clients WHERE purchase is not null;
- id |       fullname       | purchase
-----+----------------------+----------
-  1 | Иванов Иван Иванович |        3
-  2 | Петров Петр Петрович |        4
-  3 | Иоганн Себастьян Бах |        5
-(3 rows)
-```
+skip-host-cache
+skip-name-resolve
+datadir=/var/lib/mysql
+socket=/var/run/mysqld/mysqld.sock
+secure-file-priv=/var/lib/mysql-files
+user=mysql
 
-## Задача 5
+pid-file=/var/run/mysqld/mysqld.pid
+[client]
+socket=/var/run/mysqld/mysqld.sock
 
-Получите полную информацию по выполнению запроса выдачи всех пользователей из задачи 4
-(используя директиву EXPLAIN).
+# Amount of RAM for data cache
+innodb_buffer_pool_size = 654M
 
-Приведите получившийся результат и объясните что значат полученные значения.
+# Log-file size
+innodb_log_file_size = 100M
 
-#### Ответ
+# The size in bytes of the buffer that InnoDB uses to write to the log files on disk
+innodb_log_buffer_size = 1M
 
-```
-test_db=# EXPLAIN ANALYZE VERBOSE SELECT id,fullname,purchase FROM clients WHERE purchase is not null;
-                                                 QUERY PLAN                                                 
-------------------------------------------------------------------------------------------------------------
- Seq Scan on public.clients  (cost=0.00..18.10 rows=806 width=40) (actual time=0.012..0.014 rows=3 loops=1)
-   Output: id, fullname, purchase
-   Filter: (clients.purchase IS NOT NULL)
-   Rows Removed by Filter: 2
- Planning Time: 0.038 ms
- Execution Time: 0.029 ms
-(6 rows)
-```
-EXPLAIN показывает следующие параметры:
- - Объекты сканирования для получения информации (таблица clients);
- - Стоимость запроса (cost в произвольных единицах);
- - Фактическое время выполнения запроса (actual time в миллисекундах) - показано из-за параметра ANALYZE в запросе. А также количество строк, которое вернулось при выполнении запроса и количество обращений к узлу запроса (таблице);
- - Что будет выведено (Output);
- - Фильтры запроса (Filter).
+# Keep tables saparately in each file (ON) or in one file (OFF)
+innodb_file_per_table ON
 
-## Задача 6
+# Defines the method used to flush data to InnoDB data files and log files
+innodb_flush_method = O_DSYNC
 
-Создайте бэкап БД test_db и поместите его в volume, предназначенный для бэкапов (см. Задачу 1).
+# Logs are written after each transaction commit and flushed to disk once per second
+innodb_flush_log_at_trx_commit = 2
 
-Остановите контейнер с PostgreSQL (но не удаляйте volumes).
+# Amount of RAM size for cache query
+query_cache_size = 0
+!includedir /etc/mysql/conf.d/
 
-Поднимите новый пустой контейнер с PostgreSQL.
-
-Восстановите БД test_db в новом контейнере.
-
-Приведите список операций, который вы применяли для бэкапа данных и восстановления.
-
-#### Ответ
-
-Экспорт базы test_db и пользователей:
-```
-bash-5.1# pg_dump -U postgres test_db -f /var/lib/postgresql/backup/dump-test_db.sql
-
-bash-5.1# pg_dumpall -h localhost -p 5432 -U postgres -v --roles-only -f /var/lib/postgres/backup/useraccts.sql
-
-bash-5.1# ls -la /var/lib/postgresql/backup/
-total 16
-drwx------    2 postgres postgres      4096 Oct 10 16:37 .
-drwxr-xr-x    1 postgres postgres      4096 Oct 10 18:42 ..
--rw-r--r--    1 root     root          2702 Oct 10 14:56 dump-test_db.sql
--rw-r--r--    1 root     root           753 Oct 10 16:37 useraccts.sql
-```
-Создаем новый контейнер home_psql2 с двумя volumes, data2 и backup:
-```
-docker volume create vl_psql_data2
-
-docker create \
---name home_psql2 \
--e POSTGRES_PASSWORD=postgres \
--p 5433:5432 \
--v vl_psql_data2:/var/lib/postgresql/data \
--v vl_psql_backup:/var/lib/postgresql/backup \
-postgres:12.12-alpine3.16
-
-docker start home_psql2
-
-docker exec -ti home_psql2 /bin/bash
-```
-Импортируем данные пользователей и создаем пустую базу test_db:
-```
-bash-5.1# psql -h localhost -d postgres -U postgres -f /var/lib/postgresql/backup/useraccts.sql
-SET
-SET
-SET
-psql:/var/lib/postgresql/backup/useraccts.sql:16: ERROR:  role "postgres" already exists
-ALTER ROLE
-CREATE ROLE
-ALTER ROLE
-CREATE ROLE
-ALTER ROLE
-
-postgres=# CREATE DATABASE test_db;
-```
-Импортируем данные из дампа в базу:
-```
-bash-5.1# psql -U postgres -d test_db -f /var/lib/postgresql/backup/dump-test_db.sql
-SET
-SET
-SET
-SET
-SET
- set_config
-------------
-
-(1 row)
-
-SET
-SET
-SET
-SET
-SET
-SET
-CREATE TABLE  
-ALTER TABLE
-COMMENT
-CREATE TABLE
-ALTER TABLE
-COMMENT
-COPY 5
-COPY 5
-ALTER TABLE
-ALTER TABLE
-GRANT
-GRANT
-GRANT
-GRANT
 ```
 ---
 
-### Как cдавать задание
+### Как оформить ДЗ?
 
 Выполненное домашнее задание пришлите ссылкой на .md-файл в вашем репозитории.
 
