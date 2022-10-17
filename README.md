@@ -1,191 +1,173 @@
-# Домашнее задание к занятию "6.3. MySQL"
-
-## Введение
-
-Перед выполнением задания вы можете ознакомиться с
-[дополнительными материалами](https://github.com/netology-code/virt-homeworks/tree/master/additional/README.md).
+# Домашнее задание к занятию "6.4. PostgreSQL"
 
 ## Задача 1
 
-Используя docker поднимите инстанс MySQL (версию 8). Данные БД сохраните в volume.
+Используя docker поднимите инстанс PostgreSQL (версию 13). Данные БД сохраните в volume.
 
-Изучите [бэкап БД](https://github.com/netology-code/virt-homeworks/tree/master/06-db-03-mysql/test_data) и
-восстановитесь из него.
+Подключитесь к БД PostgreSQL используя `psql`.
 
-Перейдите в управляющую консоль `mysql` внутри контейнера.
+Воспользуйтесь командой `\?` для вывода подсказки по имеющимся в `psql` управляющим командам.
 
-Используя команду `\h` получите список управляющих команд.
-
-Найдите команду для выдачи статуса БД и **приведите в ответе** из ее вывода версию сервера БД.
-
-Подключитесь к восстановленной БД и получите список таблиц из этой БД.
-
-**Приведите в ответе** количество записей с `price` > 300.
-
-В следующих заданиях мы будем продолжать работу с данным контейнером.
+**Найдите и приведите** управляющие команды для:
+- вывода списка БД
+- подключения к БД
+- вывода списка таблиц
+- вывода описания содержимого таблиц
+- выхода из psql
 
 #### Ответ
 
-Версия БД:
-`Server version:		8.0.30 MySQL Community Server - GPL`
+Создание контейнера:
+```
+docker create \
+--name home_psql \
+-e POSTGRES_PASSWORD=postgres \
+-p 5432:5432 \
+-v vl_psql_data:/var/lib/postgresql/data \
+-v vl_backups:/var/lib/postgresql/backup \
+postgres:13.8
 
-Количество строк с `price` > 300:
+docker start home_psql
 ```
-mysql> select count(*) from orders where price > 300;
-+----------+
-| count(*) |
-+----------+
-|        1 |
-+----------+
-1 row in set (0.01 sec)
-```
+
+- вывод списка БД: `\l`
+- подключение к БД: `\c`
+- вывод списка таблиц БД: `\dt`
+- вывод описания содержимого таблиц: `\dS`
+- выход из psql: `\q`
 
 ## Задача 2
 
-Создайте пользователя test в БД c паролем test-pass, используя:
-- плагин авторизации mysql_native_password
-- срок истечения пароля - 180 дней
-- количество попыток авторизации - 3
-- максимальное количество запросов в час - 100
-- аттрибуты пользователя:
-    - Фамилия "Pretty"
-    - Имя "James"
+Используя `psql` создайте БД `test_database`.
 
-Предоставьте привелегии пользователю `test` на операции SELECT базы `test_db`.
+Изучите [бэкап БД](https://github.com/netology-code/virt-homeworks/tree/master/06-db-04-postgresql/test_data).
 
-Используя таблицу INFORMATION_SCHEMA.USER_ATTRIBUTES получите данные по пользователю `test` и
-**приведите в ответе к задаче**.
+Восстановите бэкап БД в `test_database`.
 
-#### Ответ
+Перейдите в управляющую консоль `psql` внутри контейнера.
 
+Подключитесь к восстановленной БД и проведите операцию ANALYZE для сбора статистики по таблице.
+
+Используя таблицу [pg_stats](https://postgrespro.ru/docs/postgresql/12/view-pg-stats), найдите столбец таблицы `orders`
+с наибольшим средним значением размера элементов в байтах.
+
+**Приведите в ответе** команду, которую вы использовали для вычисления и полученный результат.
+
+Вывод операции `ANALYZE`:
 ```
-mysql> CREATE USER 'test'@'localhost' IDENTIFIED BY 'test-pass';
-
-mysql> ALTER USER 'test'@'localhost' ATTRIBUTE
-    -> '{"firstname": "James", "lastname": "Pretty"}';
-
-mysql> ALTER USER 'test'@'localhost'
-    -> WITH
-    -> MAX_QUERIES_PER_HOUR 100
-    -> FAILED_LOGIN_ATTEMPTS 3
-    -> PASSWORD_LOCK_TIME 2
-    -> PASSWORD EXPIRE INTERVAL 180 DAY;
-
-mysql> GRANT SELECT ON test_db.* TO 'test'@'localhost';
-Query OK, 0 rows affected, 1 warning (0.00 sec)
-
-mysql> SELECT USER,HOST,ATTRIBUTE FROM INFORMATION_SCHEMA.USER_ATTRIBUTES WHERE USER='test';
-+------+-----------+----------------------------------------------+
-| USER | HOST      | ATTRIBUTE                                    |
-+------+-----------+----------------------------------------------+
-| test | localhost | {"lastname": "Pretty", "firstname": "James"} |
-+------+-----------+----------------------------------------------+
-1 row in set (0.00 sec)
+test_database=# ANALYZE VERBOSE orders;
+INFO:  analyzing "public.orders"
+INFO:  "orders": scanned 1 of 1 pages, containing 8 live rows and 0 dead rows; 8 rows in sample, 8 estimated total rows
+ANALYZE
+```
+Вывод наибольшего среднего размера элементов в байтах находится в столбце `avg_width`:
+```
+test_database=# SELECT tablename, attname, avg_width
+test_database=# FROM pg_stats
+test_database=# WHERE tablename = 'orders'
+test_database=# ORDER BY avg_width DESC LIMIT 1
+test_database=# ;
+ tablename | attname | avg_width
+-----------+---------+-----------
+ orders    | title   |        16
+(1 row)
 ```
 
 ## Задача 3
 
-Установите профилирование `SET profiling = 1`.
-Изучите вывод профилирования команд `SHOW PROFILES;`.
+Архитектор и администратор БД выяснили, что ваша таблица orders разрослась до невиданных размеров и
+поиск по ней занимает долгое время. Вам, как успешному выпускнику курсов DevOps в нетологии предложили
+провести разбиение таблицы на 2 (шардировать на orders_1 - price>499 и orders_2 - price<=499).
 
-Исследуйте, какой `engine` используется в таблице БД `test_db` и **приведите в ответе**.
+Предложите SQL-транзакцию для проведения данной операции.
 
-Измените `engine` и **приведите время выполнения и запрос на изменения из профайлера в ответе**:
-- на `MyISAM`
-- на `InnoDB`
+Можно ли было изначально исключить "ручное" разбиение при проектировании таблицы orders?
 
 #### Ответ
 
+Создаем две таблицы, с наследованием от orders:
 ```
-mysql> SET profiling = 1;
-Query OK, 0 rows affected, 1 warning (0.00 sec)
-```
-По-умолчанию у таблицы `orders` `ENGINE` = `InnoDB`
-```
-mysql> SELECT TABLE_SCHEMA,TABLE_NAME,ENGINE,VERSION FROM information_schema.TABLES where TABLE_NAME = 'orders';
-+--------------+------------+--------+---------+
-| TABLE_SCHEMA | TABLE_NAME | ENGINE | VERSION |
-+--------------+------------+--------+---------+
-| test_db      | orders     | InnoDB |      10 |
-+--------------+------------+--------+---------+
-1 row in set (0.00 sec)
-```
-Сменив `ENGINE` таблицы, получаем следующие результаты:
-```
-mysql> ALTER TABLE orders ENGINE=MyISAM;
-Query OK, 5 rows affected (0.09 sec)
-Records: 5  Duplicates: 0  Warnings: 0
+test_database=# CREATE TABLE orders_1
+test_database=# (CHECK (price > 499))
+test_database=# INHERITS (orders)
+test_database=# ;
 
-mysql> ALTER TABLE orders ENGINE=InnoDB;
-Query OK, 5 rows affected (0.03 sec)
-Records: 5  Duplicates: 0  Warnings: 0
-
-mysql> SHOW PROFILES;
-+----------+------------+--------------------------------------+
-| Query_ID | Duration   | Query                                |
-+----------+------------+--------------------------------------+
-|       11 | 0.00017675 | SET @@profiling_history_size = 100   |
-|       12 | 0.00032350 | ALTER TABLE orders SET ENGINE=MyISAM |
-|       13 | 0.09105925 | ALTER TABLE orders ENGINE=MyISAM     |
-|       14 | 0.03776225 | ALTER TABLE orders ENGINE=InnoDB     |
-+----------+------------+--------------------------------------+
-4 rows in set, 1 warning (0.00 sec)
+test_database=# CREATE TABLE orders_2
+test_database-# (CHECK (price <= 499))
+test_database-# INHERITS (orders)
+test_database-# ;
 ```
+Добавляем данные из родительской таблицы в дочерние:
+```
+test_database=# INSERT INTO orders_1
+test_database-# SELECT * FROM orders
+test_database-# WHERE price > 499
+;
+INSERT 0 3
+test_database=# INSERT INTO orders_2
+test_database-# SELECT * FROM orders
+test_database-# WHERE price <= 499
+test_database-# ;
+INSERT 0 5
+```
+Создаем индексы по столбцу price:  
+```
+test_database=# CREATE INDEX orders_from_499 on orders_1 (price);
+CREATE INDEX
+test_database=# CREATE INDEX orders_upto_499 on orders_2 (price);
+CREATE INDEX
+```
+Создаем функцию, которая будет определять таблицу для записи новых данных:
+```
+test_database=# CREATE OR REPLACE FUNCTION insert_order_trigger()
+test_database-# RETURNS TRIGGER AS $$
+test_database$# BEGIN
+test_database$#   IF (NEW.range > 499) THEN
+test_database$#     INSERT INTO orders_1 VALUES (NEW.*);
+test_database$#   ELSE
+test_database$#     INSERT INTO orders_2 VALUES (NEW.*);
+test_database$#   END IF;
+test_database$#   RETURN NULL;
+test_database$# END;
+test_database$# $$
+test_database-# LANGUAGE plpgsql;
+CREATE FUNCTION
+```
+Создаем триггер, вызывающий функцию `insert_order_trigger()`:
+```
+test_database=# CREATE TRIGGER order_insertion
+test_database-# BEFORE INSERT ON orders
+test_database-# FOR EACH ROW EXECUTE FUNCTION in
+test_database-# FOR EACH ROW EXECUTE FUNCTION insert_order_trigger();
+CREATE TRIGGER
+```
+Для существующей таблицы использован метод Partitioning Using Inheritance (две таблицы наследуют колонки родительской таблицы).  
+Новую таблицу можно разделить методом Declarative Partitioning, используя диапазоны значений price (но нужно знать минимальные и максимальные значения price, чтобы указать их в диапазоне). Но это также ручной метод разбиения таблицы.
+
 
 ## Задача 4
 
-Изучите файл `my.cnf` в директории /etc/mysql.
+Используя утилиту `pg_dump` создайте бекап БД `test_database`.
 
-Измените его согласно ТЗ (движок InnoDB):
-- Скорость IO важнее сохранности данных
-- Нужна компрессия таблиц для экономии места на диске
-- Размер буффера с незакомиченными транзакциями 1 Мб
-- Буффер кеширования 30% от ОЗУ
-- Размер файла логов операций 100 Мб
-
-Приведите в ответе измененный файл `my.cnf`.
+Как бы вы доработали бэкап-файл, чтобы добавить уникальность значения столбца `title` для таблиц `test_database`?
 
 #### Ответ
 
-Файл `my.cnf` после внесения изменений:
+Бэкап создан:  
+`pg_dump -U postgres -d test_database > /var/lib/postgresql/backup/test_database_dump.sql
+`  
+
+Уникальность значения добавляется с помощью ограничителя UNIQUE при создании/редактировании таблицы:
 ```
-skip-host-cache
-skip-name-resolve
-datadir=/var/lib/mysql
-socket=/var/run/mysqld/mysqld.sock
-secure-file-priv=/var/lib/mysql-files
-user=mysql
-
-pid-file=/var/run/mysqld/mysqld.pid
-[client]
-socket=/var/run/mysqld/mysqld.sock
-
-# Amount of RAM for data cache
-innodb_buffer_pool_size = 654M
-
-# Log-file size
-innodb_log_file_size = 100M
-
-# The size in bytes of the buffer that InnoDB uses to write to the log files on disk
-innodb_log_buffer_size = 1M
-
-# Keep tables saparately in each file (ON) or in one file (OFF)
-innodb_file_per_table ON
-
-# Defines the method used to flush data to InnoDB data files and log files
-innodb_flush_method = O_DSYNC
-
-# Logs are written after each transaction commit and flushed to disk once per second
-innodb_flush_log_at_trx_commit = 2
-
-# Amount of RAM size for cache query
-query_cache_size = 0
-!includedir /etc/mysql/conf.d/
-
+CREATE TABLE public.orders (
+    id integer NOT NULL,
+    title character varying(80) NOT NULL UNIQUE,
+    price integer DEFAULT 0
+);
 ```
 ---
 
-### Как оформить ДЗ?
+### Как cдавать задание
 
 Выполненное домашнее задание пришлите ссылкой на .md-файл в вашем репозитории.
 
