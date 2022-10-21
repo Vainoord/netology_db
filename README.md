@@ -1,170 +1,348 @@
-# Домашнее задание к занятию "6.4. PostgreSQL"
+# Домашнее задание к занятию "6.5. Elasticsearch"
 
 ## Задача 1
 
-Используя docker поднимите инстанс PostgreSQL (версию 13). Данные БД сохраните в volume.
+В этом задании вы потренируетесь в:
+- установке elasticsearch
+- первоначальном конфигурировании elastcisearch
+- запуске elasticsearch в docker
 
-Подключитесь к БД PostgreSQL используя `psql`.
+Используя докер образ [elasticsearch:7](https://hub.docker.com/_/elasticsearch) как базовый:
 
-Воспользуйтесь командой `\?` для вывода подсказки по имеющимся в `psql` управляющим командам.
+- составьте Dockerfile-манифест для elasticsearch
+- соберите docker-образ и сделайте `push` в ваш docker.io репозиторий
+- запустите контейнер из получившегося образа и выполните запрос пути `/` c хост-машины
 
-**Найдите и приведите** управляющие команды для:
-- вывода списка БД
-- подключения к БД
-- вывода списка таблиц
-- вывода описания содержимого таблиц
-- выхода из psql
+Требования к `elasticsearch.yml`:
+- данные `path` должны сохраняться в `/var/lib`
+- имя ноды должно быть `netology_test`
+
+В ответе приведите:
+- текст Dockerfile манифеста
+- ссылку на образ в репозитории dockerhub
+- ответ `elasticsearch` на запрос пути `/` в json виде
+
+Подсказки:
+- при сетевых проблемах внимательно изучите кластерные и сетевые настройки в elasticsearch.yml
+- при некоторых проблемах вам поможет docker директива ulimit
+- elasticsearch в логах обычно описывает проблему и пути ее решения
+- обратите внимание на настройки безопасности такие как `xpack.security.enabled`
+- если докер образ не запускается и падает с ошибкой 137 в этом случае может помочь настройка `-e ES_HEAP_SIZE`
+- при настройке `path` возможно потребуется настройка прав доступа на директорию
+
+Далее мы будем работать с данным экземпляром elasticsearch.
 
 #### Ответ
 
-Создание контейнера:
+Dockerfile:
 ```
-docker create \
---name home_psql \
--e POSTGRES_PASSWORD=postgres \
--p 5432:5432 \
--v vl_psql_data:/var/lib/postgresql/data \
--v vl_backups:/var/lib/postgresql/backup \
-postgres:13.8
+FROM elasticsearch:7.17.6
 
-docker start home_psql
+RUN mkdir /var/lib/elasticsearch &&\
+    mkdir /var/log/elasticsearch &&\
+    chown -R elasticsearch:elasticsearch /var/lib/elasticsearch &&\
+    chown -R elasticsearch:elasticsearch /var/log/elasticsearch
+
+USER elasticsearch
+
+COPY elasticsearch.yml /usr/share/elasticsearch/config/elasticsearch.yml
+
+EXPOSE 9200 9300
+
+CMD ["/usr/sbin/initctl"]
+
+CMD ["/usr/share/elasticsearch/bin/elasticsearch"]
 ```
-
-- вывод списка БД: `\l`
-- подключение к БД: `\c`
-- вывод списка таблиц БД: `\dt`
-- вывод описания содержимого таблиц: `\dS`
-- выход из psql: `\q`
-
+Образ elasticsearch:  
+https://hub.docker.com/repository/docker/vainoord/elasticsearch/tags?page=1&ordering=last_updated
+```
+{
+  "name" : "netology_test",
+  "cluster_name" : "netology_cluster",
+  "cluster_uuid" : "-1g8r64ZT4-os_0yOZGFKg",
+  "version" : {
+    "number" : "7.17.6",
+    "build_flavor" : "default",
+    "build_type" : "docker",
+    "build_hash" : "f65e9d338dc1d07b642e14a27f338990148ee5b6",
+    "build_date" : "2022-08-23T11:08:48.893373482Z",
+    "build_snapshot" : false,
+    "lucene_version" : "8.11.1",
+    "minimum_wire_compatibility_version" : "6.8.0",
+    "minimum_index_compatibility_version" : "6.0.0-beta1"
+  },
+  "tagline" : "You Know, for Search"
+}
+```
 ## Задача 2
 
-Используя `psql` создайте БД `test_database`.
+В этом задании вы научитесь:
+- создавать и удалять индексы
+- изучать состояние кластера
+- обосновывать причину деградации доступности данных
 
-Изучите [бэкап БД](https://github.com/netology-code/virt-homeworks/tree/master/06-db-04-postgresql/test_data).
+Ознакомтесь с [документацией](https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-create-index.html)
+и добавьте в `elasticsearch` 3 индекса, в соответствии со таблицей:
 
-Восстановите бэкап БД в `test_database`.
+| Имя | Количество реплик | Количество шард |
+|-----|-------------------|-----------------|
+| ind-1| 0 | 1 |
+| ind-2 | 1 | 2 |
+| ind-3 | 2 | 4 |
 
-Перейдите в управляющую консоль `psql` внутри контейнера.
+Получите список индексов и их статусов, используя API и **приведите в ответе** на задание.
 
-Подключитесь к восстановленной БД и проведите операцию ANALYZE для сбора статистики по таблице.
+Получите состояние кластера `elasticsearch`, используя API.
 
-Используя таблицу [pg_stats](https://postgrespro.ru/docs/postgresql/12/view-pg-stats), найдите столбец таблицы `orders`
-с наибольшим средним значением размера элементов в байтах.
+Как вы думаете, почему часть индексов и кластер находится в состоянии yellow?
 
-**Приведите в ответе** команду, которую вы использовали для вычисления и полученный результат.
+Удалите все индексы.
 
-Вывод операции `ANALYZE`:
+**Важно**
+
+При проектировании кластера elasticsearch нужно корректно рассчитывать количество реплик и шард,
+иначе возможна потеря данных индексов, вплоть до полной, при деградации системы.
+
+#### Ответ
+
+Создание индексов:
 ```
-test_database=# ANALYZE VERBOSE orders;
-INFO:  analyzing "public.orders"
-INFO:  "orders": scanned 1 of 1 pages, containing 8 live rows and 0 dead rows; 8 rows in sample, 8 estimated total rows
-ANALYZE
+PUT /ind-1
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 1,  
+      "number_of_replicas": 0
+    }
+  }
+}
+PUT /ind-2
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2,  
+      "number_of_replicas": 1
+    }
+  }
+}
+PUT /ind-3
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 4,  
+      "number_of_replicas": 2
+    }
+  }
+}
 ```
-Вывод наибольшего среднего размера элементов в байтах находится в столбце `avg_width`:
+Список индексов. `GET _cat/indices/ind-*?v=true&s=index `:
 ```
-test_database=# SELECT tablename, attname, avg_width
-test_database=# FROM pg_stats
-test_database=# WHERE tablename = 'orders'
-test_database=# ORDER BY avg_width DESC LIMIT 1
-test_database=# ;
- tablename | attname | avg_width
------------+---------+-----------
- orders    | title   |        16
-(1 row)
+health status index uuid                   pri rep docs.count docs.deleted store.size pri.store.size
+green  open   ind-1 w63hG2hXSheG51RtrToREA   1   0          0            0       226b           226b
+yellow open   ind-2 bdl88b7GRj-OnL0DxigmIA   2   1          0            0       452b           452b
+yellow open   ind-3 8dMn8HujRbSl8YdYKmybLQ   4   2          0            0       904b           904b
 ```
+Статус индекса `GET _cluster/health/ind-1`:
+```
+{
+  "cluster_name" : "netology_cluster",
+  "status" : "green",
+  "timed_out" : false,
+  "number_of_nodes" : 1,
+  "number_of_data_nodes" : 1,
+  "active_primary_shards" : 1,
+  "active_shards" : 1,
+  "relocating_shards" : 0,
+  "initializing_shards" : 0,
+  "unassigned_shards" : 0,
+  "delayed_unassigned_shards" : 0,
+  "number_of_pending_tasks" : 0,
+  "number_of_in_flight_fetch" : 0,
+  "task_max_waiting_in_queue_millis" : 0,
+  "active_shards_percent_as_number" : 100.0
+}
+```
+Статус индекса `GET _cluster/health/ind-2`:
+```
+{
+  "cluster_name" : "netology_cluster",
+  "status" : "yellow",
+  "timed_out" : false,
+  "number_of_nodes" : 1,
+  "number_of_data_nodes" : 1,
+  "active_primary_shards" : 2,
+  "active_shards" : 2,
+  "relocating_shards" : 0,
+  "initializing_shards" : 0,
+  "unassigned_shards" : 2,
+  "delayed_unassigned_shards" : 0,
+  "number_of_pending_tasks" : 0,
+  "number_of_in_flight_fetch" : 0,
+  "task_max_waiting_in_queue_millis" : 0,
+  "active_shards_percent_as_number" : 62.96296296296296
+}
+```
+Статус индекса `GET _cluster/health/ind-3`:
+```
+{
+  "cluster_name" : "netology_cluster",
+  "status" : "yellow",
+  "timed_out" : false,
+  "number_of_nodes" : 1,
+  "number_of_data_nodes" : 1,
+  "active_primary_shards" : 4,
+  "active_shards" : 4,
+  "relocating_shards" : 0,
+  "initializing_shards" : 0,
+  "unassigned_shards" : 8,
+  "delayed_unassigned_shards" : 0,
+  "number_of_pending_tasks" : 0,
+  "number_of_in_flight_fetch" : 0,
+  "task_max_waiting_in_queue_millis" : 0,
+  "active_shards_percent_as_number" : 62.96296296296296
+}
+```
+Состояние кластера `GET _cluster/health`:
+```
+{
+  "cluster_name" : "netology_cluster",
+  "status" : "yellow",
+  "timed_out" : false,
+  "number_of_nodes" : 1,
+  "number_of_data_nodes" : 1,
+  "active_primary_shards" : 17,
+  "active_shards" : 17,
+  "relocating_shards" : 0,
+  "initializing_shards" : 0,
+  "unassigned_shards" : 10,
+  "delayed_unassigned_shards" : 0,
+  "number_of_pending_tasks" : 0,
+  "number_of_in_flight_fetch" : 0,
+  "task_max_waiting_in_queue_millis" : 0,
+  "active_shards_percent_as_number" : 62.96296296296296
+}
+```
+Кластер в состоянии `yellow`, т.к. часть индексов в состоянии `yellow` - один или несколько шардов в индексе не выделены узлу.
 
+Удаляем индексы `DELETE /ind-*`:
+```
+{
+  "acknowledged" : true
+}
+```
 ## Задача 3
 
-Архитектор и администратор БД выяснили, что ваша таблица orders разрослась до невиданных размеров и
-поиск по ней занимает долгое время. Вам, как успешному выпускнику курсов DevOps в нетологии предложили
-провести разбиение таблицы на 2 (шардировать на orders_1 - price>499 и orders_2 - price<=499).
+В данном задании вы научитесь:
+- создавать бэкапы данных
+- восстанавливать индексы из бэкапов
 
-Предложите SQL-транзакцию для проведения данной операции.
+Создайте директорию `{путь до корневой директории с elasticsearch в образе}/snapshots`.
 
-Можно ли было изначально исключить "ручное" разбиение при проектировании таблицы orders?
+Используя API [зарегистрируйте](https://www.elastic.co/guide/en/elasticsearch/reference/current/snapshots-register-repository.html#snapshots-register-repository)
+данную директорию как `snapshot repository` c именем `netology_backup`.
 
-#### Ответ
+**Приведите в ответе** запрос API и результат вызова API для создания репозитория.
 
-Создаем две таблицы, с наследованием от orders:
-```
-test_database=# CREATE TABLE orders_1
-test_database=# (CHECK (price > 499))
-test_database=# INHERITS (orders)
-test_database=# ;
+Создайте индекс `test` с 0 реплик и 1 шардом и **приведите в ответе** список индексов.
 
-test_database=# CREATE TABLE orders_2
-test_database-# (CHECK (price <= 499))
-test_database-# INHERITS (orders)
-test_database-# ;
-```
-Добавляем данные из родительской таблицы в дочерние:
-```
-test_database=# INSERT INTO orders_1
-test_database-# SELECT * FROM orders
-test_database-# WHERE price > 499
-;
-INSERT 0 3
-test_database=# INSERT INTO orders_2
-test_database-# SELECT * FROM orders
-test_database-# WHERE price <= 499
-test_database-# ;
-INSERT 0 5
-```
-Создаем индексы по столбцу price:  
-```
-test_database=# CREATE INDEX orders_from_499 on orders_1 (price);
-CREATE INDEX
-test_database=# CREATE INDEX orders_upto_499 on orders_2 (price);
-CREATE INDEX
-```
-Создаем функцию, которая будет определять таблицу для записи новых данных:
-```
-test_database=# CREATE OR REPLACE FUNCTION insert_order_trigger()
-test_database-# RETURNS TRIGGER AS $$
-test_database$# BEGIN
-test_database$#   IF (NEW.range > 499) THEN
-test_database$#     INSERT INTO orders_1 VALUES (NEW.*);
-test_database$#   ELSE
-test_database$#     INSERT INTO orders_2 VALUES (NEW.*);
-test_database$#   END IF;
-test_database$#   RETURN NULL;
-test_database$# END;
-test_database$# $$
-test_database-# LANGUAGE plpgsql;
-CREATE FUNCTION
-```
-Создаем триггер, вызывающий функцию `insert_order_trigger()`:
-```
-test_database=# CREATE TRIGGER order_insertion
-test_database-# BEFORE INSERT ON orders
-test_database-# FOR EACH ROW EXECUTE FUNCTION in
-test_database-# FOR EACH ROW EXECUTE FUNCTION insert_order_trigger();
-CREATE TRIGGER
-```
-Для существующей таблицы использован метод Partitioning Using Inheritance (две таблицы наследуют колонки родительской таблицы).  
-Новую таблицу можно разделить методом Declarative Partitioning, используя диапазоны значений price (но нужно знать минимальные и максимальные значения price, чтобы указать их в диапазоне). Но это также ручной метод разбиения таблицы.
+[Создайте `snapshot`](https://www.elastic.co/guide/en/elasticsearch/reference/current/snapshots-take-snapshot.html)
+состояния кластера `elasticsearch`.
 
+**Приведите в ответе** список файлов в директории со `snapshot`ами.
 
-## Задача 4
+Удалите индекс `test` и создайте индекс `test-2`. **Приведите в ответе** список индексов.
 
-Используя утилиту `pg_dump` создайте бекап БД `test_database`.
+[Восстановите](https://www.elastic.co/guide/en/elasticsearch/reference/current/snapshots-restore-snapshot.html) состояние
+кластера `elasticsearch` из `snapshot`, созданного ранее.
 
-Как бы вы доработали бэкап-файл, чтобы добавить уникальность значения столбца `title` для таблиц `test_database`?
+**Приведите в ответе** запрос к API восстановления и итоговый список индексов.
+
+Подсказки:
+- возможно вам понадобится доработать `elasticsearch.yml` в части директивы `path.repo` и перезапустить `elasticsearch`
 
 #### Ответ
-
-Бэкап создан:  
-`pg_dump -U postgres -d test_database > /var/lib/postgresql/backup/test_database_dump.sql
-`  
-
-Уникальность значения добавляется с помощью ограничителя UNIQUE при создании/редактировании таблицы:
+Добавлен параметр `path:repo /var/lib/elasticsearch/snapshots` в `elasticsearch.yml`
 ```
-CREATE TABLE public.orders (
-    id integer NOT NULL,
-    title character varying(80) NOT NULL UNIQUE,
-    price integer DEFAULT 0
-);
+PUT /_snapshot/netology_backup
+{
+  "type": "fs",
+  "settings": {
+    "location": "/var/lib/elasticsearch/snapshots"
+  }
+}
 ```
+Результат `http://localhost:9200/_snapshot/netology_backup?pretty`:
+```
+{
+  "netology_backup" : {
+    "type" : "fs",
+    "settings" : {
+      "location" : "/var/lib/elasticsearch/snapshots"
+    }
+  }
+}
+```
+Индекс `test` создан:
+```
+health status index uuid                   pri rep docs.count docs.deleted store.size pri.store.size
+green  open   test  W5GX-ofGR8-WCQ_6gRH9GQ   1   0          0            0       226b           226b
+```
+Snapshot создан командой:
+```
+PUT _snapshot/netology_backup/elasticsearc?wait_for_completion=true
+{
+  "indices": "test",
+  "include_global_state": false
+}
+```
+Результат `GET _snapshot/netology_backup/elasticsearch`:
+```
+{
+  "snapshot" : {
+    "snapshot" : "elasticsearc",
+    "uuid" : "mImgMc7aRU-k4CFQCf4L8Q",
+    "repository" : "netology_backup",
+    "version_id" : 7170699,
+    "version" : "7.17.6",
+    "indices" : [
+      "test"
+    ],
+    "data_streams" : [ ],
+    "include_global_state" : false,
+    "state" : "SUCCESS",
+    "start_time" : "2022-10-21T14:43:01.420Z",
+    "start_time_in_millis" : 1666363381420,
+    "end_time" : "2022-10-21T14:43:01.420Z",
+    "end_time_in_millis" : 1666363381420,
+    "duration_in_millis" : 0,
+    "failures" : [ ],
+    "shards" : {
+      "total" : 1,
+      "failed" : 0,
+      "successful" : 1
+    },
+    "feature_states" : [ ]
+  }
+}
+```
+Добавлен индекс `test-2`, удален 'test':
+```
+health status index  uuid                   pri rep docs.count docs.deleted store.size pri.store.size
+green  open   test-2 hfmzsepkRiuqf9Lbr3YHjw   1   0          0            0       226b           226b
+```
+Бэкап восстановлен `POST _snapshot/netology_backup/elasticsearc/_restore?pretty`:
+```
+{
+  "accepted" : true
+}
+```
+Итоговый список индексов:
+```
+health status index  uuid                   pri rep docs.count docs.deleted store.size pri.store.size
+green  open   test-2 hfmzsepkRiuqf9Lbr3YHjw   1   0          0            0       226b           226b
+green  open   test   ipTWf6TES_KOCiX8TzXtFw   1   0          0            0       226b           226b
+```
+
 ---
 
 ### Как cдавать задание
